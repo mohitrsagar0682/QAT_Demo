@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Intel Xeon 6 — QAT Compression Demo</title>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+  <!-- Local styles -->
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════ HEADER ════════════════════ -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="logo-block">
+      <span class="intel-wordmark">intel</span>
+      <span class="logo-divider">|</span>
+      <span class="demo-title">Xeon&reg; 6 QAT Demo</span>
+    </div>
+    <p class="demo-subtitle">Hardware-accelerated compression — live benchmark</p>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════ STATUS BAR ════════════════ -->
+<div class="status-bar" id="statusBar">
+  <div class="status-inner">
+    <span class="status-label">Status:</span>
+    <span class="badge" id="qatBadge">Checking…</span>
+    <span class="status-sep">·</span>
+    <span class="status-label">ISA-L:</span>
+    <span id="isalVersion" class="status-value">—</span>
+    <span class="status-sep">·</span>
+    <span class="status-label">Engine:</span>
+    <span id="engineInfo" class="status-value">—</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ CONTROLS ══════════════════ -->
+<section class="controls-section">
+  <div class="controls-inner">
+    <div class="control-group">
+      <label for="durationSlider">Duration: <strong id="durationVal">30</strong>s</label>
+      <input type="range" id="durationSlider" min="10" max="60" step="5" value="30" />
+    </div>
+    <div class="control-group">
+      <label for="chunkSelect">Chunk Size</label>
+      <select id="chunkSelect">
+        <option value="1">1 MB</option>
+        <option value="5">5 MB</option>
+        <option value="10" selected>10 MB</option>
+        <option value="25">25 MB</option>
+      </select>
+    </div>
+    <button class="run-btn" id="runBtn" onclick="runBenchmark()">
+      <span class="run-icon">▶</span> RUN BENCHMARK
+    </button>
+  </div>
+  <div class="run-status" id="runStatus"></div>
+</section>
+
+<!-- ═══════════════════════════════════════════ SVG ANIMATION ═════════════ -->
+<section class="svg-section" id="svgSection">
+  <div class="svg-wrapper">
+    <svg viewBox="0 0 800 120" xmlns="http://www.w3.org/2000/svg" class="pipeline-svg" id="pipelineSvg">
+      <!-- Data source -->
+      <rect x="10" y="30" width="100" height="60" rx="8" fill="#1e2736" stroke="#4a5568" stroke-width="1.5"/>
+      <text x="60" y="58" text-anchor="middle" fill="#a0aec0" font-size="11" font-family="monospace">DATA</text>
+      <text x="60" y="74" text-anchor="middle" fill="#a0aec0" font-size="10" font-family="monospace">SOURCE</text>
+
+      <!-- Arrow 1 -->
+      <line x1="110" y1="60" x2="200" y2="60" stroke="#4a5568" stroke-width="2" stroke-dasharray="4,3"/>
+      <polygon points="196,55 208,60 196,65" fill="#4a5568"/>
+
+      <!-- CPU Box (software path) -->
+      <rect x="210" y="20" width="120" height="80" rx="8" fill="#1e2736" stroke="#718096" stroke-width="1.5"/>
+      <text x="270" y="45" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="bold" font-family="monospace">CPU</text>
+      <text x="270" y="62" text-anchor="middle" fill="#a0aec0" font-size="10" font-family="monospace">gzip / ISA-L</text>
+      <text x="270" y="78" text-anchor="middle" fill="#718096" font-size="9" font-family="monospace">Software path</text>
+      <!-- CPU utilization bar -->
+      <rect x="220" y="85" width="100" height="6" rx="3" fill="#2d3748"/>
+      <rect x="220" y="85" width="90" height="6" rx="3" fill="#e53e3e" id="cpuBarSw">
+        <animate attributeName="width" from="90" to="85" dur="2s" repeatCount="indefinite"/>
+      </rect>
+
+      <!-- VS label -->
+      <text x="380" y="65" text-anchor="middle" fill="#4a5568" font-size="16" font-weight="bold" font-family="monospace">VS</text>
+
+      <!-- QAT Chip Box (accelerated path) -->
+      <rect x="420" y="20" width="140" height="80" rx="8" fill="#0d1a2e" stroke="#0068B5" stroke-width="2"/>
+      <!-- Glow effect via filter applied via CSS -->
+      <text x="490" y="42" text-anchor="middle" fill="#00C7FD" font-size="12" font-weight="bold" font-family="monospace">QAT ENGINE</text>
+      <text x="490" y="60" text-anchor="middle" fill="#63b3ed" font-size="10" font-family="monospace">Intel Silicon</text>
+      <text x="490" y="76" text-anchor="middle" fill="#0068B5" font-size="9" font-family="monospace">Hardware offload</text>
+      <!-- QAT CPU bar (very low) -->
+      <rect x="430" y="85" width="120" height="6" rx="3" fill="#1a2744"/>
+      <rect x="430" y="85" width="8" height="6" rx="3" fill="#00C7FD" id="cpuBarAccel">
+        <animate attributeName="width" from="8" to="10" dur="1.5s" repeatCount="indefinite"/>
+      </rect>
+
+      <!-- Arrow to output -->
+      <line x1="560" y1="60" x2="650" y2="60" stroke="#0068B5" stroke-width="2" stroke-dasharray="4,3"/>
+      <polygon points="646,55 658,60 646,65" fill="#0068B5"/>
+
+      <!-- Output box -->
+      <rect x="660" y="30" width="120" height="60" rx="8" fill="#1e2736" stroke="#4a5568" stroke-width="1.5"/>
+      <text x="720" y="58" text-anchor="middle" fill="#a0aec0" font-size="11" font-family="monospace">COMPRESSED</text>
+      <text x="720" y="74" text-anchor="middle" fill="#a0aec0" font-size="10" font-family="monospace">OUTPUT</text>
+
+      <!-- Animated particles - software path (red/grey) -->
+      <circle r="5" fill="#fc8181" opacity="0.8" id="swParticle1">
+        <animateMotion dur="2.5s" repeatCount="indefinite" begin="0s"
+          path="M110,60 L200,60"/>
+      </circle>
+      <circle r="4" fill="#fc8181" opacity="0.6" id="swParticle2">
+        <animateMotion dur="2.5s" repeatCount="indefinite" begin="1.2s"
+          path="M110,60 L200,60"/>
+      </circle>
+
+      <!-- Animated particles - QAT path (blue/cyan, faster) -->
+      <circle r="5" fill="#00C7FD" opacity="0.9" id="qatParticle1">
+        <animateMotion dur="0.8s" repeatCount="indefinite" begin="0s"
+          path="M560,60 L650,60"/>
+      </circle>
+      <circle r="5" fill="#0068B5" opacity="0.9" id="qatParticle2">
+        <animateMotion dur="0.8s" repeatCount="indefinite" begin="0.4s"
+          path="M560,60 L650,60"/>
+      </circle>
+      <circle r="4" fill="#00C7FD" opacity="0.7" id="qatParticle3">
+        <animateMotion dur="0.8s" repeatCount="indefinite" begin="0.2s"
+          path="M560,60 L650,60"/>
+      </circle>
+    </svg>
+
+    <div class="svg-legend">
+      <span class="legend-sw">● Software path (CPU-bound)</span>
+      <span class="legend-qat">● QAT path (hardware offload, ~30-40× faster)</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════ BENCHMARK PANELS ══════════ -->
+<section class="panels-section">
+  <div class="panels-grid">
+
+    <!-- Software Panel -->
+    <div class="bench-panel panel-sw" id="panelSw">
+      <div class="panel-header panel-header-sw">
+        <span class="panel-icon">⚙</span>
+        <span class="panel-name">Software Path</span>
+        <span class="panel-engine" id="swEngine">gzip</span>
+      </div>
+      <div class="panel-metrics">
+        <div class="metric-card">
+          <div class="metric-value" id="swThroughput">—</div>
+          <div class="metric-label">Throughput (MB/s)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value metric-cpu" id="swCpu">—</div>
+          <div class="metric-label">CPU Utilization</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="swRatio">—</div>
+          <div class="metric-label">Compression Ratio</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value metric-lat" id="swLatency">—</div>
+          <div class="metric-label">Latency (ms)</div>
+        </div>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar" id="swProgress"></div>
+      </div>
+      <div class="panel-elapsed" id="swElapsed">Waiting…</div>
+    </div>
+
+    <!-- Accelerated Panel -->
+    <div class="bench-panel panel-accel" id="panelAccel">
+      <div class="panel-header panel-header-accel">
+        <span class="panel-icon">⚡</span>
+        <span class="panel-name">QAT Accelerated</span>
+        <span class="panel-engine" id="accelEngine">ISA-L + QAT</span>
+      </div>
+      <div class="panel-metrics">
+        <div class="metric-card">
+          <div class="metric-value metric-accel" id="accelThroughput">—</div>
+          <div class="metric-label">Throughput (MB/s)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="accelCpu">—</div>
+          <div class="metric-label">CPU Utilization</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value metric-accel" id="accelRatio">—</div>
+          <div class="metric-label">Compression Ratio</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value metric-accel" id="accelLatency">—</div>
+          <div class="metric-label">Latency (ms)</div>
+        </div>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar progress-bar-accel shimmer" id="accelProgress"></div>
+      </div>
+      <div class="panel-elapsed" id="accelElapsed">Waiting…</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════ LIVE CHART ════════════════ -->
+<section class="chart-section">
+  <div class="chart-container">
+    <h3 class="section-title">Live Throughput (MB/s)</h3>
+    <canvas id="liveChart" height="80"></canvas>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════ RESULTS ══════════════════ -->
+<section class="results-section hidden" id="resultsSection">
+  <div class="results-inner">
+    <h2 class="results-title">Benchmark Complete</h2>
+
+    <div class="speedup-hero">
+      <div class="speedup-number" id="speedupNum">—</div>
+      <div class="speedup-label">× Faster with QAT</div>
+    </div>
+
+    <div class="results-grid">
+      <div class="results-table-wrap">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>⚙ Software</th>
+              <th>⚡ QAT</th>
+              <th>Improvement</th>
+            </tr>
+          </thead>
+          <tbody id="resultsTableBody">
+            <!-- Populated by app.js -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="results-stats">
+        <div class="stat-card stat-card-hero">
+          <div class="stat-value" id="coresFreeVal">—</div>
+          <div class="stat-label">CPU Cores Freed by QAT</div>
+          <div class="stat-sub">Available for application logic</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="cpuSavedPct">—</div>
+          <div class="stat-label">CPU Reduction</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="latencyImprov">—</div>
+          <div class="stat-label">Latency Improvement</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="results-actions">
+      <a href="http://localhost:3000" target="_blank" class="grafana-btn">
+        📊 Open Grafana Dashboard
+      </a>
+      <button class="run-btn run-btn-sm" onclick="runBenchmark()">↺ Run Again</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════ CONFETTI ══════════════════ -->
+<div id="confettiContainer" class="confetti-container"></div>
+
+<!-- ═══════════════════════════════════════════ FOOTER ═══════════════════ -->
+<footer class="site-footer">
+  <p>Powered by <strong>Intel Xeon&reg; 6</strong> | Built with <strong>OpenClaw</strong> | Intel QAT Demo v1.0</p>
+</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

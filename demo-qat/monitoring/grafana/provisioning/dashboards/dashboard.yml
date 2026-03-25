@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: 'QAT Demo'
+    orgId: 1
+    folder: 'Intel QAT'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards
