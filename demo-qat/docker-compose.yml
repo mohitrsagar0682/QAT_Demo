@@ -11,7 +11,7 @@ services:
     environment:
       - QAT_SIMULATE=1
     volumes:
-      - ./frontend:/app/frontend:ro
+      - ./frontend:/frontend:ro
     restart: unless-stopped
     networks:
       - qat-demo
